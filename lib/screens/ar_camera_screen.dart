@@ -17,9 +17,11 @@ class _ARCameraScreenState extends State<ARCameraScreen> {
   @override
   void initState() {
     super.initState();
-    // MVPやから、まずは一番目のカメラ（通常は背面カメラ）を決め打ちで初期化
-    _controller = CameraController(widget.cameras[0], ResolutionPreset.high);
-
+    // MVPやから、まずは一番目のカメラ（通常は背面カメラ）を決め打ちで初期化する
+    _controller = CameraController(
+      widget.cameras[0],
+      ResolutionPreset.high, // 画質は骨格検知のために高めに設定している
+    ); // cameras[0]はスマホの背面カメラを指す
     _controller
         .initialize()
         .then((_) {
