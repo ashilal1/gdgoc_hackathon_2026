@@ -66,5 +66,7 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>AR仮想試着体験を提供するため、カメラ映像からリアルタイムにあなたの肩幅や骨格を検知し、服のサイズを合わせて表示するためにカメラを使用します。</string>
 </dict>
 </plist>
