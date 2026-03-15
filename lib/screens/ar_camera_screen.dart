@@ -17,9 +17,11 @@ class _ARCameraScreenState extends State<ARCameraScreen> {
   @override
   void initState() {
     super.initState();
-    // MVPやから、まずは一番目のカメラ（通常は背面カメラ）を決め打ちで初期化
-    _controller = CameraController(widget.cameras[0], ResolutionPreset.high);
-
+    // MVPやから、まずは一番目のカメラ（通常は背面カメラ）を決め打ちで初期化する
+    _controller = CameraController(
+      widget.cameras[0],
+      ResolutionPreset.high, // 画質は骨格検知のために高めに設定している
+    ); // cameras[0]はスマホの背面カメラを指す
     _controller
         .initialize()
         .then((_) {
@@ -53,9 +55,16 @@ class _ARCameraScreenState extends State<ARCameraScreen> {
     }
 
     // カメラ映像をフルスクリーンで表示
+    // 被写体が縦に伸びて表示されてしまう理由は、CameraPreview を SizedBox.expand を使って画面全体に強制的に引き伸ばしているからだった
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SizedBox.expand(child: CameraPreview(_controller)),
+      body: Center(
+        child: AspectRatio(
+          // カメラのアスペクト比に合わせて表示枠を決定する（縦画面の場合は 1 / aspectRatio）
+          aspectRatio: 1 / _controller.value.aspectRatio,
+          child: CameraPreview(_controller),
+        ),
+      ),
     );
   }
 }
