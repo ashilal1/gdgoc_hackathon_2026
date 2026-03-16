@@ -5,7 +5,7 @@ import 'screens/ar_camera_screen.dart';
 Future<void> main() async {
   // main関数内で非同期処理を呼び出すための設定
   WidgetsFlutterBinding.ensureInitialized();
-  // ↑iOS/Androidのカメラハードウェア）」にアクセスする前にいるおまじない
+  // ↑iOS/Androidのカメラハードウェア）にアクセスする前にいるおまじない
 
   // デバイスで利用可能なカメラのリストを取得
   final cameras = await availableCameras();
