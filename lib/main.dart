@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
-// 元の画面は Bridge の中で使うので残しておきます
-import 'screens/ar_camera_screen.dart'; 
+import 'vision_detector_views/pose_detector_view.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // カメラのリストを取得
-  final cameras = await availableCameras();
 
-  runApp(
-    MaterialApp(
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
-     
-      home: ARCameraScreen(cameras: cameras),
-    ),
-  );
+      home: PoseDetectorView(),
+    );
+  }
 }
