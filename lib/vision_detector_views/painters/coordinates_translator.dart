@@ -2,10 +2,8 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:camera/camera.dart';
-import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 
-// 公式サンプル準拠: 入力画像座標(x)をキャンバス座標へ変換する。
-// 回転角とカメラ向き(前/後)を考慮して、描画位置のズレを防ぐ。
 double translateX(
   double x,
   Size canvasSize,
@@ -34,7 +32,6 @@ double translateX(
   }
 }
 
-// 公式サンプルより入力画像座標(y)をキャンバス座標へ変換する。
 double translateY(
   double y,
   Size canvasSize,
