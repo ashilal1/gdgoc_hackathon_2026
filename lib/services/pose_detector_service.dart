@@ -1,34 +1,55 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
 class PoseDetectorService {
+  // MediaPipeのposedetectorのインスタンスを生成
   final PoseDetector _poseDetector = PoseDetector(
     options: PoseDetectorOptions(),
   );
   bool _isBusy = false;
 
+  // Androidでは端末の向きによる回転補正が必要。
+  // DeviceOrientationを角度へ変換するために使う。
+  final _orientations = const {
+    DeviceOrientation.portraitUp: 0,
+    DeviceOrientation.landscapeLeft: 90,
+    DeviceOrientation.portraitDown: 180,
+    DeviceOrientation.landscapeRight: 270,
+  };
+
   // カメラ画像を受け取り、両肩の座標(Offset)のリストを返す関数
   Future<List<Offset>?> processFrame(
     CameraImage image,
     CameraDescription camera,
+    DeviceOrientation deviceOrientation,
   ) async {
     if (_isBusy) return null;
     _isBusy = true;
 
     try {
-      final inputImage = _inputImageFromCameraImage(image, camera);
+      final inputImage = _inputImageFromCameraImage(
+        image,
+        camera,
+        deviceOrientation,
+      );
       if (inputImage == null) return null;
 
-      final poses = await _poseDetector.processImage(inputImage);
+      final poses = await _poseDetector.processImage(
+        inputImage,
+      ); // processImage: ML Kitに画像を投げて、体中の関節（Landmarks）を探させる
       if (poses.isEmpty) return null;
 
       final pose = poses.first;
+      // 左右の方の座標を取得
       final leftShoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
       final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
 
       if (leftShoulder == null || rightShoulder == null) return null;
+
+      // 毎フレームのprintはパフォーマンスに影響するため抑制する。
 
       return [
         Offset(leftShoulder.x, leftShoulder.y),
@@ -42,14 +63,15 @@ class PoseDetectorService {
     return null;
   }
 
-  void dispose() {
-    _poseDetector.close();
+  Future<void> dispose() async {
+    await _poseDetector.close();
   }
 
-  // ML Kit用の画像フォーマット変換（ボイラープレート）
+  // ML Kit用の画像フォーマットに変換
   InputImage? _inputImageFromCameraImage(
     CameraImage image,
     CameraDescription camera,
+    DeviceOrientation deviceOrientation,
   ) {
     final sensorOrientation = camera.sensorOrientation;
 
@@ -57,11 +79,14 @@ class PoseDetectorService {
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
     } else if (defaultTargetPlatform == TargetPlatform.android) {
-      var rotationCompensation = 0;
+      // 公式サンプルと同じく、端末向きとカメラ向きを合成して補正する。
+      var rotationCompensation = _orientations[deviceOrientation];
+      if (rotationCompensation == null) return null;
       if (camera.lensDirection == CameraLensDirection.front) {
-        rotationCompensation = (sensorOrientation + 0) % 360;
+        rotationCompensation = (sensorOrientation + rotationCompensation) % 360;
       } else {
-        rotationCompensation = (sensorOrientation - 0 + 360) % 360;
+        rotationCompensation =
+            (sensorOrientation - rotationCompensation + 360) % 360;
       }
       rotation = InputImageRotationValue.fromRawValue(rotationCompensation);
     }
