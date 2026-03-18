@@ -1,19 +1,20 @@
-import 'dart:io';
+// ギャラリーから画像を選択し、MlKitに渡すウィジェット
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:image_picker/image_picker.dart';
-
 import 'utils.dart';
 
 class GalleryView extends StatefulWidget {
-  GalleryView(
-      {super.key,
-      required this.title,
-      this.text,
-      required this.onImage,
-      required this.onDetectorViewModeChanged});
+  GalleryView({
+    super.key,
+    required this.title,
+    this.text,
+    required this.onImage,
+    required this.onDetectorViewModeChanged,
+  });
 
   final String title;
   final String? text;
@@ -39,70 +40,71 @@ class _GalleryViewState extends State<GalleryView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(
-          title: Text(widget.title),
-          actions: [
-            Padding(
-              padding: EdgeInsets.only(right: 20.0),
-              child: GestureDetector(
-                onTap: widget.onDetectorViewModeChanged,
-                child: Icon(
-                  Platform.isIOS ? Icons.camera_alt_outlined : Icons.camera,
-                ),
+      appBar: AppBar(
+        title: Text(widget.title),
+        actions: [
+          Padding(
+            padding: EdgeInsets.only(right: 20.0),
+            child: GestureDetector(
+              onTap: widget.onDetectorViewModeChanged,
+              child: Icon(
+                Platform.isIOS ? Icons.camera_alt_outlined : Icons.camera,
               ),
             ),
-          ],
-        ),
-        body: _galleryBody());
+          ),
+        ],
+      ),
+      body: _galleryBody(),
+    );
   }
 
   Widget _galleryBody() {
-    return ListView(shrinkWrap: true, children: [
-      _image != null
-          ? SizedBox(
-              height: 400,
-              width: 400,
-              child: Stack(
-                fit: StackFit.expand,
-                children: <Widget>[
-                  Image.file(_image!),
-                ],
-              ),
-            )
-          : Icon(
-              Icons.image,
-              size: 200,
-            ),
-      Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16),
-        child: ElevatedButton(
-          onPressed: _getImageAsset,
-          child: Text('From Assets'),
-        ),
-      ),
-      Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16),
-        child: ElevatedButton(
-          child: Text('From Gallery'),
-          onPressed: () => _getImage(ImageSource.gallery),
-        ),
-      ),
-      Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16),
-        child: ElevatedButton(
-          child: Text('Take a picture'),
-          onPressed: () => _getImage(ImageSource.camera),
-        ),
-      ),
-      if (_image != null)
+    return ListView(
+      shrinkWrap: true,
+      children: [
+        _image != null
+            ? SizedBox(
+                height: 400,
+                width: 400,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[Image.file(_image!)],
+                ),
+              )
+            : Icon(Icons.image, size: 200),
         Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Text(
-              '${_path == null ? '' : 'Image path: $_path'}\n\n${widget.text ?? ''}'),
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: ElevatedButton(
+            onPressed: _getImageAsset,
+            child: Text('From Assets'),
+          ),
         ),
-    ]);
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: ElevatedButton(
+            child: Text('From Gallery'),
+            onPressed: () => _getImage(ImageSource.gallery),
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: ElevatedButton(
+            child: Text('Take a picture'),
+            onPressed: () => _getImage(ImageSource.camera),
+          ),
+        ),
+        if (_image != null)
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text(
+              '${_path == null ? '' : 'Image path: $_path'}\n\n${widget.text ?? ''}',
+            ),
+          ),
+      ],
+    );
   }
 
+  // 画像を取得するメソッド
   Future _getImage(ImageSource source) async {
     setState(() {
       _image = null;
@@ -119,65 +121,77 @@ class _GalleryViewState extends State<GalleryView> {
     final List<String> assets = assetManifest
         .listAssets()
         .where((String key) => key.contains('images/'))
-        .where((String key) =>
-            key.contains('.jpg') ||
-            key.contains('.jpeg') ||
-            key.contains('.png') ||
-            key.contains('.webp'))
+        .where(
+          (String key) =>
+              key.contains('.jpg') ||
+              key.contains('.jpeg') ||
+              key.contains('.png') ||
+              key.contains('.webp'),
+        )
         .toList();
 
     showDialog(
-        context: context,
-        builder: (BuildContext context) {
-          return Dialog(
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(30.0)),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Select image',
-                    style: TextStyle(fontSize: 20),
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(30.0),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Select image', style: TextStyle(fontSize: 20)),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.7,
                   ),
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                        maxHeight: MediaQuery.of(context).size.height * 0.7),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        children: [
-                          for (final path in assets)
-                            GestureDetector(
-                              onTap: () async {
-                                Navigator.of(context).pop();
-                                _processFile(await getAssetPath(path));
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.all(8.0),
-                                child: Image.asset(path),
-                              ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        for (final path in assets)
+                          GestureDetector(
+                            onTap: () async {
+                              Navigator.of(context).pop();
+                              _processFile(await getAssetPath(path));
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Image.asset(path),
                             ),
-                        ],
-                      ),
+                          ),
+                      ],
                     ),
                   ),
-                  ElevatedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: Text('Cancel')),
-                ],
-              ),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text('Cancel'),
+                ),
+              ],
             ),
-          );
-        });
+          ),
+        );
+      },
+    );
   }
 
+  // 画像を選択した後の処理
   Future _processFile(String path) async {
     setState(() {
-      _image = File(path);
+      _image = File(path); // 画面に表示するためにセット
     });
     _path = path;
-    final inputImage = InputImage.fromFilePath(path);
+    final inputImage = InputImage.fromFilePath(
+      path,
+    ); // ML Kitに渡すためのInputImageオブジェクトを作成する
     widget.onImage(inputImage);
   }
-}
+} // 作成したinputImageを、コンストラクタで受け取ったonImage関数に渡すことで、実際のAI解析が始まる
+
+
+/*
+camera_view.dartは回転やフォーマットの複雑な計算が必要やったけど、
+gallery_view.dartはファイルパスを指定するだけだからシンプルにできる
+ */

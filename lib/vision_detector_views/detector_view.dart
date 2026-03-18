@@ -1,12 +1,18 @@
+//カメラ映像（リアルタイム）とギャラリー（静止画）の表示モードを切り替えるスイッチャー（切り替え器）
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
-
 import 'camera_view.dart';
 import 'gallery_view.dart';
 
+/*
+liveFeed: カメラを使ってリアルタイムでポーズを検出するモード
+gallery: スマホ内の写真を選択してポーズを検出するモード
+*/
 enum DetectorViewMode { liveFeed, gallery }
 
+// どちらの画面を表示すべきかを判断し、必要なデータを各画面に橋渡しするようにするウィジェット
 class DetectorView extends StatefulWidget {
   DetectorView({
     super.key,
@@ -44,6 +50,7 @@ class _DetectorViewState extends State<DetectorView> {
     super.initState();
   }
 
+  // 画面の切り替えロジック
   @override
   Widget build(BuildContext context) {
     return _mode == DetectorViewMode.liveFeed
@@ -54,13 +61,19 @@ class _DetectorViewState extends State<DetectorView> {
             onDetectorViewModeChanged: _onDetectorViewModeChanged,
             initialCameraLensDirection: widget.initialCameraLensDirection,
             onCameraLensDirectionChanged: widget.onCameraLensDirectionChanged,
-          )
+          ) // ライブフィードならカメラビューを表示する
         : GalleryView(
             title: widget.title,
             text: widget.text,
             onImage: widget.onImage,
-            onDetectorViewModeChanged: _onDetectorViewModeChanged);
+            onDetectorViewModeChanged: _onDetectorViewModeChanged,
+          ); // そうでなければギャラリービューを表示する
   }
+
+  /* onImage コールバックの橋渡し
+PoseDetectorViewから渡された onImage（ポーズ解析を行う関数）を、そのまま CameraViewやGalleryViewに渡す
+これにより、画像がカメラから来てもギャラリーから来ても、全く同じロジック（_processImage）で解析できるようになる
+*/
 
   void _onDetectorViewModeChanged() {
     if (_mode == DetectorViewMode.liveFeed) {

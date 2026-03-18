@@ -14,7 +14,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: PoseDetectorView(),
+      home: PoseDetectorView(), // アプリ起動直後、ポーズ検出画面を表示する
     );
   }
 }

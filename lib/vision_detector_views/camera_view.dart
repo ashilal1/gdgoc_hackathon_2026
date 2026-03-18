@@ -1,5 +1,6 @@
-import 'dart:io';
+// スマートフォンのカメラを制御し、リアルタイムの映像をMlKitに渡すウィジェット
 
+import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -28,9 +29,10 @@ class CameraView extends StatefulWidget {
 }
 
 class _CameraViewState extends State<CameraView> {
-  static List<CameraDescription> _cameras = [];
+  // アプリ全体で一度取得すれば使い回せるからstaticでいい
+  static List<CameraDescription> _cameras = []; // 利用可能なカメラリスト
   CameraController? _controller;
-  int _cameraIndex = -1;
+  int _cameraIndex = -1; // 現在使用中のカメラ番号
   double _currentZoomLevel = 1.0;
   double _minAvailableZoom = 1.0;
   double _maxAvailableZoom = 1.0;
@@ -42,14 +44,15 @@ class _CameraViewState extends State<CameraView> {
   @override
   void initState() {
     super.initState();
-
-    _initialize();
+    _initialize(); // 開始時にカメラを準備
   }
 
+  // 利用可能なカメラ（前面・背面）を確認し、指定されたカメラ（デフォルトは背面）を準備する
   void _initialize() async {
     if (_cameras.isEmpty) {
-      _cameras = await availableCameras();
+      _cameras = await availableCameras(); // デバイスのカメラを探す
     }
+    // 指定された向き（背面/前面）のカメラを選択する
     for (var i = 0; i < _cameras.length; i++) {
       if (_cameras[i].lensDirection == widget.initialCameraLensDirection) {
         _cameraIndex = i;
@@ -260,12 +263,13 @@ class _CameraViewState extends State<CameraView> {
     ),
   );
 
+  // CameraController を作成し、解像度（ResolutionPreset.high）や画像フォーマットを設定してカメラを開始する
+  // 画像フォーマット（AndroidはNV21、iOSはBGRA8888）
   Future _startLiveFeed() async {
     final camera = _cameras[_cameraIndex];
     _controller = CameraController(
       camera,
-      // Set to ResolutionPreset.high. Do NOT set it to ResolutionPreset.max because for some phones does NOT work.
-      ResolutionPreset.high,
+      ResolutionPreset.high, // 高解像度でカメラを起動する（解析の精度が上がる）
       enableAudio: false,
       imageFormatGroup: Platform.isAndroid
           ? ImageFormatGroup.nv21
@@ -289,6 +293,7 @@ class _CameraViewState extends State<CameraView> {
       _controller?.getMaxExposureOffset().then((value) {
         _maxAvailableExposureOffset = value;
       });
+      // 映像ストリームを開始し、1フレームごとに _processCameraImageを呼ぶ
       _controller?.startImageStream(_processCameraImage).then((value) {
         if (widget.onCameraFeedReady != null) {
           widget.onCameraFeedReady!();
@@ -329,17 +334,17 @@ class _CameraViewState extends State<CameraView> {
     DeviceOrientation.landscapeRight: 270,
   };
 
+  /*
+   1. デバイスの向きから回転角度を計算
+   2. 画像フォーマットの整合性を確認
+   3. バイトデータを InputImage 形式に変換
+*/
   InputImage? _inputImageFromCameraImage(CameraImage image) {
     if (_controller == null) return null;
 
-    // get image rotation
-    // it is used in android to convert the InputImage from Dart to Java: https://github.com/flutter-ml/google_ml_kit_flutter/blob/master/packages/google_mlkit_commons/android/src/main/java/com/google_mlkit_commons/InputImageConverter.java
-    // `rotation` is not used in iOS to convert the InputImage from Dart to Obj-C: https://github.com/flutter-ml/google_ml_kit_flutter/blob/master/packages/google_mlkit_commons/ios/Classes/MLKVisionImage%2BFlutterPlugin.m
-    // in both platforms `rotation` and `camera.lensDirection` can be used to compensate `x` and `y` coordinates on a canvas: https://github.com/flutter-ml/google_ml_kit_flutter/blob/master/packages/example/lib/vision_detector_views/painters/coordinates_translator.dart
     final camera = _cameras[_cameraIndex];
     final sensorOrientation = camera.sensorOrientation;
-    // print(
-    //     'lensDirection: ${camera.lensDirection}, sensorOrientation: $sensorOrientation, ${_controller?.value.deviceOrientation} ${_controller?.value.lockedCaptureOrientation} ${_controller?.value.isCaptureOrientationLocked}');
+
     InputImageRotation? rotation;
     if (Platform.isIOS) {
       rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
@@ -348,26 +353,23 @@ class _CameraViewState extends State<CameraView> {
           _orientations[_controller!.value.deviceOrientation];
       if (rotationCompensation == null) return null;
       if (camera.lensDirection == CameraLensDirection.front) {
-        // front-facing
+        // フロントカメラ
         rotationCompensation = (sensorOrientation + rotationCompensation) % 360;
       } else {
-        // back-facing
+        // 後ろのカメラ
         rotationCompensation =
             (sensorOrientation - rotationCompensation + 360) % 360;
       }
       rotation = InputImageRotationValue.fromRawValue(rotationCompensation);
-      // print('rotationCompensation: $rotationCompensation');
     }
     if (rotation == null) return null;
-    // print('final rotation: $rotation');
 
-    // get image format
     final format = InputImageFormatValue.fromRawValue(image.format.raw);
     if (format == null) {
       print('could not find format from raw value: ${image.format.raw}');
       return null;
     }
-    // Validate format depending on platform
+
     const androidSupportedFormats = [
       InputImageFormat.nv21,
       InputImageFormat.yv12,
@@ -406,24 +408,20 @@ class _CameraViewState extends State<CameraView> {
     );
   }
 
-  // Reusable buffer to avoid per-frame allocations when concatenating planes.
   Uint8List? _reusablePlaneBuffer;
 
   Uint8List _concatenatePlanes(CameraImage image) {
-    // Calculate the total number of bytes across all planes.
     final int totalBytes = image.planes.fold<int>(
       0,
       (int sum, Plane plane) => sum + plane.bytes.length,
     );
 
-    // Ensure the reusable buffer is allocated and large enough.
     var buffer = _reusablePlaneBuffer;
     if (buffer == null || buffer.length < totalBytes) {
       buffer = Uint8List(totalBytes);
       _reusablePlaneBuffer = buffer;
     }
 
-    // Copy each plane's bytes into the reusable buffer.
     var offset = 0;
     for (final Plane plane in image.planes) {
       final bytes = plane.bytes;
@@ -431,7 +429,6 @@ class _CameraViewState extends State<CameraView> {
       offset += bytes.length;
     }
 
-    // Return the reusable buffer directly when sizes match, or a zero-copy view otherwise.
     if (totalBytes == buffer.length) {
       return buffer;
     }
@@ -454,7 +451,6 @@ class _CameraViewState extends State<CameraView> {
 
     final Uint8List nv21 = _reusableNv21Buffer!;
 
-    // Copy Y plane (strip row padding)
     final Plane yPlane = image.planes[0];
     int destIndex = 0;
     for (int row = 0; row < height; row++) {
@@ -463,7 +459,6 @@ class _CameraViewState extends State<CameraView> {
       destIndex += width;
     }
 
-    // Interleave V and U planes into NV21 (VU order)
     final Plane uPlane = image.planes[1];
     final Plane vPlane = image.planes[2];
     final int uvPixelStride = uPlane.bytesPerPixel ?? 1;

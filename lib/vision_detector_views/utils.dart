@@ -1,5 +1,6 @@
-import 'dart:io';
+// 画像などの静止ファイルを、プログラムから操作可能なファイル形式として取り扱うためのユーティリティ
 
+import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
@@ -10,8 +11,12 @@ Future<String> getAssetPath(String asset) async {
   final file = File(path);
   if (!await file.exists()) {
     final byteData = await rootBundle.load(asset);
-    await file.writeAsBytes(byteData.buffer
-        .asUint8List(byteData.offsetInBytes, byteData.lengthInBytes));
+    await file.writeAsBytes(
+      byteData.buffer.asUint8List(
+        byteData.offsetInBytes,
+        byteData.lengthInBytes,
+      ),
+    );
   }
   return file.path;
 }
