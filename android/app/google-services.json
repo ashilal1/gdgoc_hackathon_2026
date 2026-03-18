@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "15024072966",
+    "project_id": "gdgoc-hackathon-2026-490617",
+    "storage_bucket": "gdgoc-hackathon-2026-490617.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:15024072966:android:91a75c02e7d3ce3fad9687",
+        "android_client_info": {
+          "package_name": "com.example.gdgoc_hackathon_2026"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD6JQ4tiRR051ExK_W8KdYqdnCpFKDy75M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
