@@ -6,6 +6,8 @@
 	<string>15024072966-8rjbdgk2lm8ob44nebdm886v35h43r6o.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
 	<string>com.googleusercontent.apps.15024072966-8rjbdgk2lm8ob44nebdm886v35h43r6o</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>15024072966-36u1v0qmn60fujl0ccsui2aqal40k7f5.apps.googleusercontent.com</string>
 	<key>API_KEY</key>
 	<string>AIzaSyBcrGBcYOa5LZmKdKRmpzfYPhE1V0e4_jE</string>
 	<key>GCM_SENDER_ID</key>

@@ -10,6 +10,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:developer' as _logger;
 import 'package:crypto/crypto.dart';
 import 'vision_detector_views/pose_detector_view.dart';
+import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "15024072966-36u1v0qmn60fujl0ccsui2aqal40k7f5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.gdgoc_hackathon_2026",
+            "certificate_hash": "122d412c69653a7f4cf4437e59759dd55725b8dc"
+          }
+        },
+        {
           "client_id": "15024072966-hrr4as9129idm13pb1mfg90o6fofqrl8.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
