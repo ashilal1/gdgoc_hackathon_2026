@@ -5,14 +5,26 @@ import 'vision_detector_views/pose_detector_view.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   try {
     await Firebase.initializeApp();
+  } catch (e, st) {
+    debugPrint('Firebase initialization failed: $e');
+    debugPrintStack(stackTrace: st);
+    rethrow;
+  }
+
+  try {
     final userCredential = await FirebaseAuth.instance.signInAnonymously();
-    final uid = userCredential.user?.uid;
-    debugPrint('Signed in anonymously. uid=$uid');
+    final user = userCredential.user;
+    if (user == null) {
+      throw StateError('Anonymous sign-in returned null user.');
+    }
+    debugPrint('Signed in anonymously. uid=${user.uid}');
   } catch (e, st) {
     debugPrint('Anonymous sign-in failed: $e');
     debugPrintStack(stackTrace: st);
+    rethrow;
   }
 
   runApp(const MyApp());
