@@ -12,7 +12,20 @@
           "package_name": "com.example.gdgoc_hackathon_2026"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "15024072966-hrr4as9129idm13pb1mfg90o6fofqrl8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.gdgoc_hackathon_2026",
+            "certificate_hash": "7d523a507eb98ed420160cc197ab0e7cfa41b826"
+          }
+        },
+        {
+          "client_id": "15024072966-h0ifgnhnumlukvaln4q1dvo5867lls9u.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyD6JQ4tiRR051ExK_W8KdYqdnCpFKDy75M"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "15024072966-h0ifgnhnumlukvaln4q1dvo5867lls9u.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "15024072966-8rjbdgk2lm8ob44nebdm886v35h43r6o.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.gdgocHackathon2026"
+              }
+            }
+          ]
         }
       }
     }
