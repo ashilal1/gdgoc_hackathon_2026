@@ -9,11 +9,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:ui' as ui;
 import 'dart:async';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'detector_view.dart';
 import 'painters/pose_painter.dart';
 import 'painters/clothes_painter.dart';
 import '../agents/fitting_orchestration.dart';
+import '../agents/gemini_advisor.dart';
 
 class PoseDetectorView extends StatefulWidget {
   final bool isFirstLogin;
@@ -66,7 +68,12 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   @override
   void initState() {
     super.initState();
-    _fittingAgent = FittingAgent();
+    final geminiApiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
+    _fittingAgent = FittingAgent(
+      geminiAdvisor: geminiApiKey.isNotEmpty
+          ? GeminiAdvisor(apiKey: geminiApiKey)
+          : null,
+    );
     _statusMessage = widget.isFirstLogin
         ? "骨格座標を取得中...."
         : "あなたに合う服を選んでいます....";
@@ -79,7 +86,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     }
   }
 
-  // ⭐️ buildメソッドを修正し、Stackで画面上部にメッセージを重ねる
+  //  Stackで画面上部にメッセージを重ねる
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -88,14 +95,12 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
           DetectorView(
             title: 'Pose Detector',
             customPaint: _customPaint,
-            // (textは使わないので削除するか、ログ用として空にしておきます)
             onImage: _processImage,
             initialCameraLensDirection: _cameraLensDirection,
             onCameraLensDirectionChanged: (value) =>
                 _cameraLensDirection = value,
           ),
 
-          // --- ⬇︎追加：カメラの上にメッセージをオーバーレイ表示 ⬇︎---
           Positioned(
             top: 100, // 上からの位置（カメラのUIと被らないように調整）
             left: 0,
@@ -159,7 +164,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
                 ),
               ),
             ),
-          // --- ⬆︎ここまで ⬆︎---
         ],
       ),
     );
@@ -175,9 +179,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     // AI が画像内のポーズ（関節の位置など）を検出する
     final poses = await _poseDetector.processImage(inputImage);
 
-    // ======================================
-    // 【初回のサイズ計測と保存処理】
-    // ======================================
+    // 初回のサイズ計測と保存処理
     if (widget.isFirstLogin && !_hasSavedSize && poses.isNotEmpty) {
       final pose = poses.first; // 最初のひとり
       final leftShoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
@@ -185,7 +187,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
 
       // 肩がしっかり検出できている場合
       if (leftShoulder != null && rightShoulder != null) {
-        // [1] 肩幅のピクセル距離を計算
+        // 肩幅のピクセル距離を計算
         final dx = leftShoulder.x - rightShoulder.x;
         final dy = leftShoulder.y - rightShoulder.y;
         final baseShoulderWidthPx = sqrt(dx * dx + dy * dy);
@@ -194,7 +196,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
         if (baseShoulderWidthPx > 50) {
           _hasSavedSize = true; // これ以降は同じ処理が呼ばれないようにフラグを立てる
 
-          //  修正: awaitで_processImage自体を止めず、非同期ブロックとして分離する
+          //  awaitで_processImage自体を止めずに、非同期ブロックとして分離する
           () async {
             // 演出のため、意図的に5秒間ほど骨格を描画し続ける（待機する）
             await Future.delayed(const Duration(seconds: 5));
@@ -239,7 +241,8 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
         try {
           final result = await _fittingAgent.evaluateFitting(
             userShoulderWidth: userShoulderWidth,
-            clothShoulderWidth: _selectedClothes!.baseShoulderWidthPx.toDouble(),
+            clothShoulderWidth: _selectedClothes!.baseShoulderWidthPx
+                .toDouble(),
             currentSize: _initialFittingSize,
             itemId: _selectedClothes!.id,
           );
@@ -253,25 +256,20 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
           print("FittingAgent評価エラー: $e");
           if (mounted) {
             setState(() {
-              _agentSuggestionText =
-                  "サイズ提案の処理で問題が発生しました。しばらくしてから再度お試しください。";
-              _agentLogs = [
-                '[FittingAgent] 評価処理で例外を検知。フォールバックを表示: $e',
-              ];
+              _agentSuggestionText = "サイズ提案の処理で問題が発生しました。しばらくしてから再度お試しください。";
+              _agentLogs = ['[FittingAgent] 評価処理で例外を検知。フォールバックを表示: $e'];
             });
           }
         }
       }
     }
 
-    // ======================================
-    // 【描画の切り替え処理】
-    // ======================================
+    // 描画の切り替え処理
     if (inputImage.metadata?.size != null &&
         inputImage.metadata?.rotation != null) {
-      // 【修正】服の処理が終わるまでは骨格を描画する
+      // 服の処理が終わるまでは骨格を描画する
       if (widget.isFirstLogin && !_isClothesReady) {
-        // [状態1＆2] サイズ計測中＆検索中：ずっと骨格を描画し続ける
+        // サイズ計測中＆検索中：ずっと骨格を描画し続ける
         final painter = PosePainter(
           poses,
           inputImage.metadata!.size,
@@ -284,7 +282,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
         _customPaint = null;
         _text = _statusMessage;
       } else {
-        // [状態3] 服の準備完了：服を描画する
+        //  服の準備完了：服を描画する
         if (_clothesImage != null && _selectedClothes != null) {
           final painter = ClothesPainter(
             poses,
@@ -309,7 +307,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     if (mounted) setState(() {});
   }
 
-  // 服の取得処理 (Dartでは同名メソッドの複数定義ができないため、引数を [] でオプショナルにしました)
+  // 服の取得処理 (Dartでは同名メソッドの複数定義ができないため、引数を [] でオプショナルにしてみた)
   Future<void> _fetchClothesFromFirestore([double? baseShoulderWidthPx]) async {
     try {
       // APIなどから服のデータを取得する想定の処理
@@ -317,16 +315,16 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
           .collection('clothes')
           .get();
 
-      // 例: 服のデータを処理
+      // 服のデータを処理
       final List<Clothes> clothesList = clothes.docs
           .map((doc) => Clothes.fromFirestore(doc))
           .toList();
 
-      print("🔥 Firestoreから服を ${clothesList.length} 件取得しました");
+      print("Firestoreから服を ${clothesList.length} 件取得しました");
 
       String imageUrl = "";
       if (clothesList.isNotEmpty) {
-        // 服を選ぶ（今回は一番目の服、もしくはサイズが最も近い服など）
+        // 服を選ぶ
         // ここでは簡単に最初の服を選択
         _selectedClothes = clothesList.first;
         if (_selectedClothes!.imageUrl.isNotEmpty) {
@@ -349,8 +347,8 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
           _statusMessage = "服の準備が完了しました！";
           _resetAgentState();
         });
-        // ⭐️ ターミナルへ出力
-        print("📱現在のステータス: $_statusMessage");
+        // ターミナルへ出力
+        print("現在のステータス: $_statusMessage");
       }
     } catch (e) {
       print("服の取得エラー: $e");
@@ -393,7 +391,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   }
 }
 
-// 簡易的な服のデータモデルクラス（エラー回避のためのダミー実装です。実際の実装に合わせて調整してください）
+// 簡易的な服のデータモデルクラス（
 class Clothes {
   final String id;
   final String imageUrl;

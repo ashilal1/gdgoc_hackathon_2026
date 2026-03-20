@@ -1,4 +1,5 @@
 import 'dart:developer' as developer;
+import 'gemini_advisor.dart';
 
 const List<String> sizeOrder = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 const String _defaultInventoryItemId = 'default-item';
@@ -44,7 +45,9 @@ class InventoryAgent {
   ) async {
     try {
       final itemInventory =
-          _mockInventory[itemId] ?? _mockInventory[_defaultInventoryItemId] ?? {};
+          _mockInventory[itemId] ??
+          _mockInventory[_defaultInventoryItemId] ??
+          {};
       final normalizedDesiredSize = desiredSize.toUpperCase();
 
       if ((itemInventory[normalizedDesiredSize] ?? 0) > 0) {
@@ -116,12 +119,15 @@ class InventoryAgent {
 
 class FittingAgent {
   final InventoryAgent _inventoryAgent;
+  final GeminiAdvisor? _geminiAdvisor;
   final double shoulderTolerance;
 
   FittingAgent({
     InventoryAgent? inventoryAgent,
+    GeminiAdvisor? geminiAdvisor,
     this.shoulderTolerance = 2.0,
-  }) : _inventoryAgent = inventoryAgent ?? InventoryAgent();
+  }) : _inventoryAgent = inventoryAgent ?? InventoryAgent(),
+       _geminiAdvisor = geminiAdvisor;
 
   Future<FittingOrchestrationResult> evaluateFitting({
     required double userShoulderWidth,
@@ -139,9 +145,20 @@ class FittingAgent {
       final diff = clothShoulderWidth - userShoulderWidth;
       if (diff.abs() <= shoulderTolerance) {
         logs.add('[FittingAgent] 適合判定: 現在のサイズで適合');
+
+        String suggestion;
+        if (_geminiAdvisor != null) {
+          logs.add('[FittingAgent] Gemini APIを使ってパーフェクトフィットのテキストを生成します');
+          suggestion = await _geminiAdvisor.generatePerfectFitSuggestion(
+            currentSize: currentSize.toUpperCase(),
+          );
+        } else {
+          suggestion =
+              '\${currentSize.toUpperCase()}サイズは肩周りにぴったりフィットしています。このままご試着をお楽しみください！';
+        }
+
         return FittingOrchestrationResult(
-          suggestionText:
-              '${currentSize.toUpperCase()}サイズは肩周りにフィットしています。このまま試着を続けますか？',
+          suggestionText: suggestion,
           logs: logs,
         );
       }
@@ -156,15 +173,29 @@ class FittingAgent {
         '[FittingAgent] サイズ不適合を検知 (${isTooSmall ? "タイト" : "ルーズ"}) -> [InventoryAgent] へ$desiredSizeサイズの在庫照会',
       );
 
-      final inventory = await _inventoryAgent.checkInventory(itemId, desiredSize);
+      final inventory = await _inventoryAgent.checkInventory(
+        itemId,
+        desiredSize,
+      );
       logs.add('[InventoryAgent] 応答: ${inventory.message}');
 
-      final fitReason =
-          isTooSmall
-              ? '${currentSize.toUpperCase()}サイズは肩周りがタイトです。'
-              : '${currentSize.toUpperCase()}サイズは肩周りに余裕があります。';
+      String suggestion;
+      if (_geminiAdvisor != null) {
+        logs.add('[FittingAgent] Gemini APIを使ってテキストを生成します');
+        suggestion = await _geminiAdvisor.generateSuggestion(
+          currentSize: currentSize.toUpperCase(),
+          isTooSmall: isTooSmall,
+          inStock: inventory.inStock,
+          requestedSize: inventory.requestedSize,
+          alternativeSize: inventory.alternativeSize,
+        );
+      } else {
+        final fitReason = isTooSmall
+            ? '\${currentSize.toUpperCase()}サイズは肩周りがタイトです。'
+            : '\${currentSize.toUpperCase()}サイズは肩周りに余裕があります。';
 
-      final suggestion = _buildSuggestionText(fitReason, inventory);
+        suggestion = _buildSuggestionText(fitReason, inventory);
+      }
 
       return FittingOrchestrationResult(suggestionText: suggestion, logs: logs);
     } catch (e) {
@@ -194,7 +225,10 @@ class FittingAgent {
     return prev >= 0 ? sizeOrder[prev] : sizeOrder[index];
   }
 
-  String _buildSuggestionText(String fitReason, InventoryCheckResult inventory) {
+  String _buildSuggestionText(
+    String fitReason,
+    InventoryCheckResult inventory,
+  ) {
     if (inventory.inStock) {
       return '$fitReason ${inventory.requestedSize}サイズの在庫を確認したところ、現在すぐにご用意できます。${inventory.requestedSize}サイズを試着しますか？';
     }
