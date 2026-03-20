@@ -51,6 +51,10 @@ class _SignInDemoState extends State<SignInDemo> {
         _error = null;
       });
 
+      // キャッシュされているアカウントをクリアする
+      await _googleSignIn.signOut(); // テスト用
+
+      // googleのアカウント選択画面を表示して、ユーザーに選択してもらう
       final googleUser = await _googleSignIn.signIn();
       if (googleUser == null) return null;
 
@@ -61,6 +65,7 @@ class _SignInDemoState extends State<SignInDemo> {
       );
 
       final userCredential = await _auth.signInWithCredential(credential);
+      // ログイン成功直後に取得できるuserを使う
       final user = userCredential.user;
       if (user == null) throw StateError('user is null');
 
@@ -71,6 +76,17 @@ class _SignInDemoState extends State<SignInDemo> {
 
       final emailHash = sha256.convert(utf8.encode(rawEmail)).toString();
 
+      // 既存のユーザー情報をFirestoreから取得してみる
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final data = userDoc.data();
+
+      // 今回が初回ログイン（= baseShoulderWidthPx が登録されていない）かどうか判定
+      final bool isFirstLogin =
+          data == null || !(data.containsKey('baseShoulderWidthPx'));
+
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'uid': user.uid,
         'emailHash': emailHash,
@@ -80,9 +96,11 @@ class _SignInDemoState extends State<SignInDemo> {
       }, SetOptions(merge: true));
 
       if (!mounted) return;
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => PoseDetectorView()));
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => PoseDetectorView(isFirstLogin: isFirstLogin),
+        ),
+      );
     } on FirebaseAuthException catch (e) {
       setState(() => _error = e.message ?? e.code);
     } catch (e) {

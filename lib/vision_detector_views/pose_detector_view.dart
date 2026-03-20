@@ -4,11 +4,18 @@ import 'package:camera/camera.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import 'dart:math';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'detector_view.dart';
 import 'painters/pose_painter.dart';
 
 class PoseDetectorView extends StatefulWidget {
+  final bool isFirstLogin;
+  // コンストラクタで受け取る
+  const PoseDetectorView({super.key, required this.isFirstLogin});
+
   @override
   State<StatefulWidget> createState() => _PoseDetectorViewState();
 }
@@ -23,6 +30,15 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   String? _text;
   var _cameraLensDirection = CameraLensDirection.back;
 
+  // 一度サイズを保存したら何度もfirestoreに書き込まないためのフラグ
+  bool _hasSavedSize = false;
+
+  // ユーザーに表示するステータスメッセージ
+  String _statusMessage = "準備中...";
+
+  // 服の検索が完了したかどうかのフラグ
+  bool _isClothesReady = false;
+
   @override
   void dispose() async {
     _canProcess = false; // ウィジェットが破棄された後に処理が走らないようにするためのフラグ
@@ -31,14 +47,62 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _statusMessage = widget.isFirstLogin
+        ? "骨格座標を取得中...."
+        : "あなたに合う服を選んでいます....";
+
+    // ⭐️ ターミナルへ出力
+    print("📱現在のステータス: $_statusMessage");
+
+    if (!widget.isFirstLogin) {
+      _fetchClothesFromFirestore();
+    }
+  }
+
+  // ⭐️ buildメソッドを修正し、Stackで画面上部にメッセージを重ねる
+  @override
   Widget build(BuildContext context) {
-    return DetectorView(
-      title: 'Pose Detector',
-      customPaint: _customPaint,
-      text: _text,
-      onImage: _processImage, // 解析が必要な新しい画像が届いたときに実行する処理
-      initialCameraLensDirection: _cameraLensDirection,
-      onCameraLensDirectionChanged: (value) => _cameraLensDirection = value,
+    return Scaffold(
+      body: Stack(
+        children: [
+          DetectorView(
+            title: 'Pose Detector',
+            customPaint: _customPaint,
+            // (textは使わないので削除するか、ログ用として空にしておきます)
+            onImage: _processImage,
+            initialCameraLensDirection: _cameraLensDirection,
+            onCameraLensDirectionChanged: (value) =>
+                _cameraLensDirection = value,
+          ),
+
+          // --- ⬇︎追加：カメラの上にメッセージをオーバーレイ表示 ⬇︎---
+          Positioned(
+            top: 100, // 上からの位置（カメラのUIと被らないように調整）
+            left: 0,
+            right: 0,
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.7), // 半透明の黒背景
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                _statusMessage,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          // --- ⬆︎ここまで ⬆︎---
+        ],
+      ),
     );
   }
 
@@ -47,29 +111,125 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     if (!_canProcess) return;
     if (_isBusy) return;
     _isBusy = true;
-    setState(() {
-      _text = '';
-    });
-    final poses = await _poseDetector.processImage(
-      inputImage,
-    ); // AI が画像内のポーズ（関節の位置など）を検出する
+    setState(() => _text = '');
 
+    // AI が画像内のポーズ（関節の位置など）を検出する
+    final poses = await _poseDetector.processImage(inputImage);
+
+    // ======================================
+    // 【初回のサイズ計測と保存処理】
+    // ======================================
+    if (widget.isFirstLogin && !_hasSavedSize && poses.isNotEmpty) {
+      final pose = poses.first; // 最初のひとり
+      final leftShoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
+      final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
+
+      // 肩がしっかり検出できている場合
+      if (leftShoulder != null && rightShoulder != null) {
+        // [1] 肩幅のピクセル距離を計算
+        final dx = leftShoulder.x - rightShoulder.x;
+        final dy = leftShoulder.y - rightShoulder.y;
+        final baseShoulderWidthPx = sqrt(dx * dx + dy * dy);
+
+        // 誤検出を防ぐため、ある程度の大きさになってから保存する
+        if (baseShoulderWidthPx > 50) {
+          _hasSavedSize = true;
+
+          final user = FirebaseAuth.instance.currentUser;
+          if (user != null) {
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .set({
+                  'baseShoulderWidthPx': baseShoulderWidthPx,
+                }, SetOptions(merge: true));
+
+            // 計測が完了したら切り替え
+            if (mounted) {
+              setState(() {
+                _statusMessage = "あなたに合う服を選んでいます....";
+              });
+              // ⭐️ ターミナルへ出力
+              print("🔥保存完了: 肩幅 $baseShoulderWidthPx");
+              print("📱現在のステータス: $_statusMessage");
+            }
+            await _fetchClothesFromFirestore(baseShoulderWidthPx);
+          }
+        }
+      }
+    }
+
+    // ======================================
+    // 【描画の切り替え処理】
+    // ======================================
     if (inputImage.metadata?.size != null &&
         inputImage.metadata?.rotation != null) {
-      final painter = PosePainter(
-        poses,
-        inputImage.metadata!.size,
-        inputImage.metadata!.rotation,
-        _cameraLensDirection,
-      ); // 解析結果（poses）を受け取ると、それを画面上の座標に正しく描画するためのPosePainterインスタンスを作成する
-      _customPaint = CustomPaint(painter: painter);
+      if (widget.isFirstLogin && !_hasSavedSize) {
+        // [状態1] サイズ計測中：骨格を描画してアピール
+        final painter = PosePainter(
+          poses,
+          inputImage.metadata!.size,
+          inputImage.metadata!.rotation,
+          _cameraLensDirection,
+        );
+        _customPaint = CustomPaint(painter: painter);
+      } else if (!_isClothesReady) {
+        // [状態2] 服を検索中：骨格は消し、「あなたに合う服を選んでいます....」だけ見せる
+        _customPaint = null;
+        _text = _statusMessage;
+      } else {
+        // [状態3] 準備完了：取得した服の画像を描画 (ClothesPainterなどを新設する)
+        _customPaint = null; // <- 将来的に ClothesPainter に差し替える部分
+        _text = "";
+      }
     } else {
       _text = 'Poses found: ${poses.length}\n\n';
       _customPaint = null;
     }
+
     _isBusy = false;
-    if (mounted) {
-      setState(() {}); // 作成した _customPaint（骨格の絵）がカメラ映像の上に重なって表示される
+    if (mounted) setState(() {});
+  }
+
+  // 服の取得処理 (Dartでは同名メソッドの複数定義ができないため、引数を [] でオプショナルにしました)
+  Future<void> _fetchClothesFromFirestore([double? baseShoulderWidthPx]) async {
+    try {
+      // APIなどから服のデータを取得する想定の処理
+      final clothes = await FirebaseFirestore.instance
+          .collection('clothes')
+          .get();
+
+      // 例: 服のデータを処理
+      final List<Clothes> clothesList = clothes.docs
+          .map((doc) => Clothes.fromFirestore(doc))
+          .toList();
+
+      if (mounted) {
+        setState(() {
+          _isClothesReady = true;
+          _statusMessage = "服の準備が完了しました！";
+        });
+        // ⭐️ ターミナルへ出力
+        print("📱現在のステータス: $_statusMessage");
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _statusMessage = "服の取得に失敗しました。";
+        });
+      }
     }
+  }
+}
+
+// 簡易的な服のデータモデルクラス（エラー回避のためのダミー実装です。実際の実装に合わせて調整してください）
+class Clothes {
+  final String id;
+  // TODO: 実際のFirestoreのフィールド構造に合わせてプロパティを追加してください
+
+  Clothes({required this.id});
+
+  factory Clothes.fromFirestore(DocumentSnapshot doc) {
+    return Clothes(id: doc.id);
   }
 }
