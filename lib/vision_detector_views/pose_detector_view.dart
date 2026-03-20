@@ -141,28 +141,34 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
 
         // 誤検出を防ぐため、ある程度の大きさになってから保存する
         if (baseShoulderWidthPx > 50) {
-          _hasSavedSize = true;
+          _hasSavedSize = true; // これ以降は同じ処理が呼ばれないようにフラグを立てる
 
-          final user = FirebaseAuth.instance.currentUser;
-          if (user != null) {
-            await FirebaseFirestore.instance
-                .collection('users')
-                .doc(user.uid)
-                .set({
-                  'baseShoulderWidthPx': baseShoulderWidthPx,
-                }, SetOptions(merge: true));
+          //  修正: awaitで_processImage自体を止めず、非同期ブロックとして分離する
+          () async {
+            // 演出のため、意図的に5秒間ほど骨格を描画し続ける（待機する）
+            await Future.delayed(const Duration(seconds: 5));
 
-            // 計測が完了したら切り替え
-            if (mounted) {
-              setState(() {
-                _statusMessage = "あなたに合う服を選んでいます....";
-              });
-              // ⭐️ ターミナルへ出力
-              print("🔥保存完了: 肩幅 $baseShoulderWidthPx");
-              print("📱現在のステータス: $_statusMessage");
+            final user = FirebaseAuth.instance.currentUser;
+            if (user != null) {
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .set({
+                    'baseShoulderWidthPx': baseShoulderWidthPx,
+                  }, SetOptions(merge: true));
+
+              // 計測が完了したら切り替え
+              if (mounted) {
+                setState(() {
+                  _statusMessage = "あなたに合う服を選んでいます....";
+                });
+                //  ターミナルへ出力
+                print("保存完了: 肩幅 $baseShoulderWidthPx");
+                print("現在のステータス: $_statusMessage");
+              }
+              await _fetchClothesFromFirestore(baseShoulderWidthPx);
             }
-            await _fetchClothesFromFirestore(baseShoulderWidthPx);
-          }
+          }(); // 即時実行関数として呼び出す
         }
       }
     }
@@ -172,8 +178,9 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     // ======================================
     if (inputImage.metadata?.size != null &&
         inputImage.metadata?.rotation != null) {
-      if (widget.isFirstLogin && !_hasSavedSize) {
-        // [状態1] サイズ計測中：骨格を描画してアピール
+      // 【修正】服の処理が終わるまでは骨格を描画する
+      if (widget.isFirstLogin && !_isClothesReady) {
+        // [状態1＆2] サイズ計測中＆検索中：ずっと骨格を描画し続ける
         final painter = PosePainter(
           poses,
           inputImage.metadata!.size,
@@ -182,11 +189,11 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
         );
         _customPaint = CustomPaint(painter: painter);
       } else if (!_isClothesReady) {
-        // [状態2] 服を検索中：骨格は消し、「あなたに合う服を選んでいます....」だけ見せる
+        // （2回目以降のログイン時）骨格を描かないための処理
         _customPaint = null;
         _text = _statusMessage;
       } else {
-        // [状態3] 準備完了：取得した服の画像を描画 (ClothesPainterなどを新設する)
+        // [状態3] 服の準備完了：服を描画する
         if (_clothesImage != null && _selectedClothes != null) {
           final painter = ClothesPainter(
             poses,
