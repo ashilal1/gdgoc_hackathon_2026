@@ -12,5 +12,11 @@ service cloud.firestore {
       allow write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // clothesコレクションのルール
+    match /clothes/{document=**} {
+      allow read: if true; // テストのため一旦誰でも（あるいは if request.auth != null;）
+      allow write: if false;
+    }
+
     // 今後他のコレクション（例: posts）を作る場合、それらにはアクセスさせない（デフォルト拒否）
   }
