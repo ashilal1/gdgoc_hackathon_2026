@@ -85,7 +85,7 @@ class ClothesPainter extends CustomPainter {
           : clothesImage.width;
 
       // 骨格サイズ(関節間)と服の全体のサイズのギャップを埋めるための倍率補正
-      // 2.2の部分を画面に合わせて調整してください
+
       final double scaleMultiplier = 0.7; // 服の見た目の大きさを調整するための定数
       final scale = (shoulderDistance / baseWidth) * scaleMultiplier;
 
