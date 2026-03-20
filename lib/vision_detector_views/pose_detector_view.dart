@@ -1,11 +1,9 @@
 // 画像を受け取って AI に渡し、その結果を描画用に整形する
 
 import 'package:camera/camera.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'dart:math';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:ui' as ui;
 import 'dart:async';
@@ -16,6 +14,12 @@ import 'painters/pose_painter.dart';
 import 'painters/clothes_painter.dart';
 import '../agents/fitting_orchestration.dart';
 import '../agents/gemini_advisor.dart';
+import '../models/clothes.dart';
+import '../repositories/clothes_repository.dart';
+import '../repositories/user_repository.dart';
+import '../utils/image_utils.dart';
+import 'widgets/status_overlay.dart';
+import 'widgets/suggestion_overlay.dart';
 
 class PoseDetectorView extends StatefulWidget {
   final bool isFirstLogin;
@@ -37,7 +41,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   bool _canProcess = true;
   bool _isBusy = false; // 前の画像の解析が終わっていないのに次の解析を始めないようにするためのフラグ
   CustomPaint? _customPaint; // 骨格検出の結果を描画するための情報が入る
-  String? _text;
   var _cameraLensDirection = CameraLensDirection.back;
 
   // 一度サイズを保存したら何度もfirestoreに書き込まないためのフラグ
@@ -54,6 +57,8 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   // 選択された服のデータ
   Clothes? _selectedClothes;
   late final FittingAgent _fittingAgent;
+  final ClothesRepository _clothesRepository = ClothesRepository();
+  final UserRepository _userRepository = UserRepository();
   bool _hasRequestedSuggestion = false;
   String _agentSuggestionText = "";
   List<String> _agentLogs = [];
@@ -101,69 +106,11 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
                 _cameraLensDirection = value,
           ),
 
-          Positioned(
-            top: 100, // 上からの位置（カメラのUIと被らないように調整）
-            left: 0,
-            right: 0,
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.7), // 半透明の黒背景
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                _statusMessage,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+          StatusOverlay(message: _statusMessage),
+          SuggestionOverlay(
+            suggestionText: _agentSuggestionText,
+            logs: _agentLogs,
           ),
-
-          if (_agentSuggestionText.isNotEmpty || _agentLogs.isNotEmpty)
-            Positioned(
-              bottom: 24,
-              left: 16,
-              right: 16,
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.75),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_agentSuggestionText.isNotEmpty)
-                      Text(
-                        _agentSuggestionText,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    if (_agentLogs.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      ..._agentLogs.map(
-                        (log) => Text(
-                          log,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
         ],
       ),
     );
@@ -174,7 +121,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     if (!_canProcess) return;
     if (_isBusy) return;
     _isBusy = true;
-    setState(() => _text = '');
 
     // AI が画像内のポーズ（関節の位置など）を検出する
     final poses = await _poseDetector.processImage(inputImage);
@@ -203,12 +149,10 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
 
             final user = FirebaseAuth.instance.currentUser;
             if (user != null) {
-              await FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(user.uid)
-                  .set({
-                    'baseShoulderWidthPx': baseShoulderWidthPx,
-                  }, SetOptions(merge: true));
+              await _userRepository.saveUserShoulderWidth(
+                user.uid,
+                baseShoulderWidthPx,
+              );
 
               // 計測が完了したら切り替え
               if (mounted) {
@@ -280,7 +224,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
       } else if (!_isClothesReady) {
         // （2回目以降のログイン時）骨格を描かないための処理
         _customPaint = null;
-        _text = _statusMessage;
       } else {
         //  服の準備完了：服を描画する
         if (_clothesImage != null && _selectedClothes != null) {
@@ -296,10 +239,8 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
         } else {
           _customPaint = null;
         }
-        _text = "";
       }
     } else {
-      _text = 'Poses found: ${poses.length}\n\n';
       _customPaint = null;
     }
 
@@ -311,14 +252,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   Future<void> _fetchClothesFromFirestore([double? baseShoulderWidthPx]) async {
     try {
       // APIなどから服のデータを取得する想定の処理
-      final clothes = await FirebaseFirestore.instance
-          .collection('clothes')
-          .get();
-
-      // 服のデータを処理
-      final List<Clothes> clothesList = clothes.docs
-          .map((doc) => Clothes.fromFirestore(doc))
-          .toList();
+      final List<Clothes> clothesList = await _clothesRepository.fetchClothes();
 
       print("Firestoreから服を ${clothesList.length} 件取得しました");
 
@@ -338,7 +272,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
       }
 
       // 画像をダウンロードして ui.Image に変換
-      final image = await _loadImageFromUrl(imageUrl);
+      final image = await ImageUtils.loadImageFromUrl(imageUrl);
 
       if (mounted) {
         setState(() {
@@ -360,61 +294,9 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     }
   }
 
-  Future<ui.Image> _loadImageFromUrl(String url) async {
-    final ImageStream stream = NetworkImage(
-      url,
-    ).resolve(ImageConfiguration.empty);
-    final Completer<ui.Image> completer = Completer();
-    late ImageStreamListener listener;
-    listener = ImageStreamListener(
-      (ImageInfo info, bool synchronousCall) {
-        if (!completer.isCompleted) {
-          completer.complete(info.image);
-        }
-        stream.removeListener(listener);
-      },
-      onError: (dynamic exception, StackTrace? stackTrace) {
-        if (!completer.isCompleted) {
-          completer.completeError(exception);
-        }
-        stream.removeListener(listener);
-      },
-    );
-    stream.addListener(listener);
-    return completer.future;
-  }
-
   void _resetAgentState() {
     _hasRequestedSuggestion = false;
     _agentSuggestionText = "";
     _agentLogs = [];
-  }
-}
-
-// 簡易的な服のデータモデルクラス（
-class Clothes {
-  final String id;
-  final String imageUrl;
-  final String itemName;
-  final String brandName;
-  final num baseShoulderWidthPx;
-
-  Clothes({
-    required this.id,
-    this.imageUrl = "",
-    this.itemName = "",
-    this.brandName = "",
-    this.baseShoulderWidthPx = 0,
-  });
-
-  factory Clothes.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>?;
-    return Clothes(
-      id: doc.id,
-      imageUrl: data?['imageUrl'] ?? "",
-      itemName: data?['itemName'] ?? "",
-      brandName: data?['brandName'] ?? "",
-      baseShoulderWidthPx: data?['baseShoulderWidthPx'] ?? 0,
-    );
   }
 }

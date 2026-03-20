@@ -63,8 +63,10 @@ class DefaultFirebaseOptions {
     messagingSenderId: '15024072966',
     projectId: 'gdgoc-hackathon-2026-490617',
     storageBucket: 'gdgoc-hackathon-2026-490617.firebasestorage.app',
-    androidClientId: '15024072966-36u1v0qmn60fujl0ccsui2aqal40k7f5.apps.googleusercontent.com',
-    iosClientId: '15024072966-8rjbdgk2lm8ob44nebdm886v35h43r6o.apps.googleusercontent.com',
+    androidClientId:
+        '15024072966-36u1v0qmn60fujl0ccsui2aqal40k7f5.apps.googleusercontent.com',
+    iosClientId:
+        '15024072966-8rjbdgk2lm8ob44nebdm886v35h43r6o.apps.googleusercontent.com',
     iosBundleId: 'com.example.gdgocHackathon2026',
   );
 }
