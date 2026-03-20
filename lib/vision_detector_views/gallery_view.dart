@@ -190,7 +190,6 @@ class _GalleryViewState extends State<GalleryView> {
   }
 } // 作成したinputImageを、コンストラクタで受け取ったonImage関数に渡すことで、実際のAI解析が始まる
 
-
 /*
 camera_view.dartは回転やフォーマットの複雑な計算が必要やったけど、
 gallery_view.dartはファイルパスを指定するだけだからシンプルにできる
