@@ -7,9 +7,12 @@ import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:ui' as ui;
+import 'dart:async';
 
 import 'detector_view.dart';
 import 'painters/pose_painter.dart';
+import 'painters/clothes_painter.dart';
 
 class PoseDetectorView extends StatefulWidget {
   final bool isFirstLogin;
@@ -38,6 +41,11 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
 
   // 服の検索が完了したかどうかのフラグ
   bool _isClothesReady = false;
+
+  // ARで表示する服の画像
+  ui.Image? _clothesImage;
+  // 選択された服のデータ
+  Clothes? _selectedClothes;
 
   @override
   void dispose() async {
@@ -179,7 +187,19 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
         _text = _statusMessage;
       } else {
         // [状態3] 準備完了：取得した服の画像を描画 (ClothesPainterなどを新設する)
-        _customPaint = null; // <- 将来的に ClothesPainter に差し替える部分
+        if (_clothesImage != null && _selectedClothes != null) {
+          final painter = ClothesPainter(
+            poses,
+            inputImage.metadata!.size,
+            inputImage.metadata!.rotation,
+            _cameraLensDirection,
+            _clothesImage!,
+            _selectedClothes!.baseShoulderWidthPx,
+          );
+          _customPaint = CustomPaint(painter: painter);
+        } else {
+          _customPaint = null;
+        }
         _text = "";
       }
     } else {
@@ -204,8 +224,29 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
           .map((doc) => Clothes.fromFirestore(doc))
           .toList();
 
+      print("🔥 Firestoreから服を ${clothesList.length} 件取得しました");
+
+      String imageUrl = "";
+      if (clothesList.isNotEmpty) {
+        // 服を選ぶ（今回は一番目の服、もしくはサイズが最も近い服など）
+        // ここでは簡単に最初の服を選択
+        _selectedClothes = clothesList.first;
+        if (_selectedClothes!.imageUrl.isNotEmpty) {
+          imageUrl = _selectedClothes!.imageUrl;
+          print("👕 服の画像URL: $imageUrl");
+        } else {
+          throw Exception("服の画像URLが空です");
+        }
+      } else {
+        throw Exception("Firestoreに服のデータが存在しません");
+      }
+
+      // 画像をダウンロードして ui.Image に変換
+      final image = await _loadImageFromUrl(imageUrl);
+
       if (mounted) {
         setState(() {
+          _clothesImage = image;
           _isClothesReady = true;
           _statusMessage = "服の準備が完了しました！";
         });
@@ -213,6 +254,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
         print("📱現在のステータス: $_statusMessage");
       }
     } catch (e) {
+      print("服の取得エラー: $e");
       if (mounted) {
         setState(() {
           _statusMessage = "服の取得に失敗しました。";
@@ -220,16 +262,56 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
       }
     }
   }
+
+  Future<ui.Image> _loadImageFromUrl(String url) async {
+    final ImageStream stream = NetworkImage(
+      url,
+    ).resolve(ImageConfiguration.empty);
+    final Completer<ui.Image> completer = Completer();
+    late ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (ImageInfo info, bool synchronousCall) {
+        if (!completer.isCompleted) {
+          completer.complete(info.image);
+        }
+        stream.removeListener(listener);
+      },
+      onError: (dynamic exception, StackTrace? stackTrace) {
+        if (!completer.isCompleted) {
+          completer.completeError(exception);
+        }
+        stream.removeListener(listener);
+      },
+    );
+    stream.addListener(listener);
+    return completer.future;
+  }
 }
 
 // 簡易的な服のデータモデルクラス（エラー回避のためのダミー実装です。実際の実装に合わせて調整してください）
 class Clothes {
   final String id;
-  // TODO: 実際のFirestoreのフィールド構造に合わせてプロパティを追加してください
+  final String imageUrl;
+  final String itemName;
+  final String brandName;
+  final num baseShoulderWidthPx;
 
-  Clothes({required this.id});
+  Clothes({
+    required this.id,
+    this.imageUrl = "",
+    this.itemName = "",
+    this.brandName = "",
+    this.baseShoulderWidthPx = 0,
+  });
 
   factory Clothes.fromFirestore(DocumentSnapshot doc) {
-    return Clothes(id: doc.id);
+    final data = doc.data() as Map<String, dynamic>?;
+    return Clothes(
+      id: doc.id,
+      imageUrl: data?['imageUrl'] ?? "",
+      itemName: data?['itemName'] ?? "",
+      brandName: data?['brandName'] ?? "",
+      baseShoulderWidthPx: data?['baseShoulderWidthPx'] ?? 0,
+    );
   }
 }
