@@ -1,0 +1,197 @@
+class InventoryCheckResult {
+  final bool inStock;
+  final String requestedSize;
+  final String? alternativeSize;
+  final String message;
+
+  const InventoryCheckResult({
+    required this.inStock,
+    required this.requestedSize,
+    required this.message,
+    this.alternativeSize,
+  });
+}
+
+class FittingOrchestrationResult {
+  final String suggestionText;
+  final List<String> logs;
+
+  const FittingOrchestrationResult({
+    required this.suggestionText,
+    required this.logs,
+  });
+}
+
+class InventoryAgent {
+  static const List<String> _sizeOrder = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+
+  final Map<String, Map<String, int>> _mockInventory;
+
+  InventoryAgent({Map<String, Map<String, int>>? inventoryData})
+    : _mockInventory =
+          inventoryData ??
+          {
+            'default-item': {'S': 0, 'M': 0, 'L': 4, 'XL': 2},
+            'fallback-item': {'M': 1, 'L': 0},
+          };
+
+  Future<InventoryCheckResult> checkInventory(
+    String itemId,
+    String desiredSize,
+  ) async {
+    try {
+      final itemInventory =
+          _mockInventory[itemId] ?? _mockInventory['default-item'] ?? {};
+      final normalizedDesiredSize = desiredSize.toUpperCase();
+
+      if ((itemInventory[normalizedDesiredSize] ?? 0) > 0) {
+        return InventoryCheckResult(
+          inStock: true,
+          requestedSize: normalizedDesiredSize,
+          message: '$normalizedDesiredSizeサイズは現在在庫があります。',
+        );
+      }
+
+      final alternative = _findAlternativeSize(
+        desiredSize: normalizedDesiredSize,
+        itemInventory: itemInventory,
+      );
+
+      if (alternative != null) {
+        return InventoryCheckResult(
+          inStock: false,
+          requestedSize: normalizedDesiredSize,
+          alternativeSize: alternative,
+          message: '$normalizedDesiredSizeサイズは在庫切れですが、$alternativeサイズをご用意できます。',
+        );
+      }
+
+      return InventoryCheckResult(
+        inStock: false,
+        requestedSize: normalizedDesiredSize,
+        message: '$normalizedDesiredSizeサイズおよび代替サイズの在庫が現在ありません。',
+      );
+    } catch (_) {
+      return InventoryCheckResult(
+        inStock: false,
+        requestedSize: desiredSize.toUpperCase(),
+        message: '在庫確認で問題が発生しました。時間をおいて再度お試しください。',
+      );
+    }
+  }
+
+  String? _findAlternativeSize({
+    required String desiredSize,
+    required Map<String, int> itemInventory,
+  }) {
+    final desiredIndex = _sizeOrder.indexOf(desiredSize);
+    if (desiredIndex == -1) {
+      for (final size in _sizeOrder) {
+        if ((itemInventory[size] ?? 0) > 0) return size;
+      }
+      return null;
+    }
+
+    for (int i = desiredIndex + 1; i < _sizeOrder.length; i++) {
+      final size = _sizeOrder[i];
+      if ((itemInventory[size] ?? 0) > 0) return size;
+    }
+
+    for (int i = desiredIndex - 1; i >= 0; i--) {
+      final size = _sizeOrder[i];
+      if ((itemInventory[size] ?? 0) > 0) return size;
+    }
+
+    return null;
+  }
+}
+
+class FittingAgent {
+  static const List<String> _sizeOrder = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+
+  final InventoryAgent _inventoryAgent;
+  final double shoulderTolerance;
+
+  FittingAgent({
+    InventoryAgent? inventoryAgent,
+    this.shoulderTolerance = 2.0,
+  }) : _inventoryAgent = inventoryAgent ?? InventoryAgent();
+
+  Future<FittingOrchestrationResult> evaluateFitting({
+    required double userShoulderWidth,
+    required double clothShoulderWidth,
+    required String currentSize,
+    required String itemId,
+  }) async {
+    final logs = <String>[];
+
+    try {
+      logs.add(
+        '[FittingAgent] 判定開始: user=$userShoulderWidth, cloth=$clothShoulderWidth, size=$currentSize, item=$itemId',
+      );
+
+      final diff = clothShoulderWidth - userShoulderWidth;
+      if (diff.abs() <= shoulderTolerance) {
+        logs.add('[FittingAgent] 適合判定: 現在のサイズで適合');
+        return FittingOrchestrationResult(
+          suggestionText:
+              '${currentSize.toUpperCase()}サイズは肩周りにフィットしています。このまま試着を続けますか？',
+          logs: logs,
+        );
+      }
+
+      final isTooSmall = diff < 0;
+      final desiredSize = _getNextSize(
+        currentSize.toUpperCase(),
+        isTooSmall: isTooSmall,
+      );
+
+      logs.add(
+        '[FittingAgent] サイズ不適合を検知 (${isTooSmall ? "タイト" : "ルーズ"}) -> [InventoryAgent] へ$desiredSizeサイズの在庫照会',
+      );
+
+      final inventory = await _inventoryAgent.checkInventory(itemId, desiredSize);
+      logs.add('[InventoryAgent] 応答: ${inventory.message}');
+
+      final fitReason =
+          isTooSmall
+              ? '${currentSize.toUpperCase()}サイズは肩周りがタイトです。'
+              : '${currentSize.toUpperCase()}サイズは肩周りに余裕があります。';
+
+      final suggestion = _buildSuggestionText(fitReason, inventory);
+
+      return FittingOrchestrationResult(suggestionText: suggestion, logs: logs);
+    } catch (_) {
+      logs.add('[FittingAgent] 予期しないエラーを検知。安全なフォールバックを返却');
+      return FittingOrchestrationResult(
+        suggestionText: 'サイズ提案の処理で問題が発生しました。しばらくしてから再度お試しください。',
+        logs: logs,
+      );
+    }
+  }
+
+  String _getNextSize(String currentSize, {required bool isTooSmall}) {
+    final index = _sizeOrder.indexOf(currentSize);
+    if (index == -1) return isTooSmall ? 'L' : 'S';
+
+    if (isTooSmall) {
+      final next = index + 1;
+      return next < _sizeOrder.length ? _sizeOrder[next] : _sizeOrder[index];
+    }
+
+    final prev = index - 1;
+    return prev >= 0 ? _sizeOrder[prev] : _sizeOrder[index];
+  }
+
+  String _buildSuggestionText(String fitReason, InventoryCheckResult inventory) {
+    if (inventory.inStock) {
+      return '$fitReason ${inventory.requestedSize}サイズの在庫を確認したところ、現在すぐにご用意できます。${inventory.requestedSize}サイズを試着しますか？';
+    }
+
+    if (inventory.alternativeSize != null) {
+      return '$fitReason ${inventory.requestedSize}サイズを確認したところ、${inventory.alternativeSize}サイズならご用意できます。${inventory.alternativeSize}サイズを試しますか？';
+    }
+
+    return '$fitReason 申し訳ありません。近いサイズの在庫が見つかりませんでした。';
+  }
+}
