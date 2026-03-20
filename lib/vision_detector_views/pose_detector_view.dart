@@ -25,7 +25,9 @@ class PoseDetectorView extends StatefulWidget {
 }
 
 class _PoseDetectorViewState extends State<PoseDetectorView> {
-  static const String _defaultCurrentSize = "M";
+  // MVPではFirestoreにサイズ列がないため、初期評価サイズを M として扱う。
+  // 商品ごとのサイズ情報を持たせる実装にした場合は、ここを動的値に置き換える。
+  static const String _initialFittingSize = "M";
 
   final PoseDetector _poseDetector = PoseDetector(
     options: PoseDetectorOptions(),
@@ -234,18 +236,30 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
         final dx = leftShoulder.x - rightShoulder.x;
         final dy = leftShoulder.y - rightShoulder.y;
         final userShoulderWidth = sqrt(dx * dx + dy * dy);
-        final result = await _fittingAgent.evaluateFitting(
-          userShoulderWidth: userShoulderWidth,
-          clothShoulderWidth: _selectedClothes!.baseShoulderWidthPx.toDouble(),
-          currentSize: _defaultCurrentSize,
-          itemId: _selectedClothes!.id,
-        );
-        if (mounted) {
-          setState(() {
-            _agentSuggestionText = result.suggestionText;
-            _agentLogs = result.logs;
-            _statusMessage = result.suggestionText;
-          });
+        try {
+          final result = await _fittingAgent.evaluateFitting(
+            userShoulderWidth: userShoulderWidth,
+            clothShoulderWidth: _selectedClothes!.baseShoulderWidthPx.toDouble(),
+            currentSize: _initialFittingSize,
+            itemId: _selectedClothes!.id,
+          );
+          if (mounted) {
+            setState(() {
+              _agentSuggestionText = result.suggestionText;
+              _agentLogs = result.logs;
+            });
+          }
+        } catch (e) {
+          print("FittingAgent評価エラー: $e");
+          if (mounted) {
+            setState(() {
+              _agentSuggestionText =
+                  "サイズ提案の処理で問題が発生しました。しばらくしてから再度お試しください。";
+              _agentLogs = [
+                '[FittingAgent] 評価処理で例外を検知。フォールバックを表示: $e',
+              ];
+            });
+          }
         }
       }
     }
@@ -333,9 +347,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
           _clothesImage = image;
           _isClothesReady = true;
           _statusMessage = "服の準備が完了しました！";
-          _hasRequestedSuggestion = false;
-          _agentSuggestionText = "";
-          _agentLogs = [];
+          _resetAgentState();
         });
         // ⭐️ ターミナルへ出力
         print("📱現在のステータス: $_statusMessage");
@@ -372,6 +384,12 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     );
     stream.addListener(listener);
     return completer.future;
+  }
+
+  void _resetAgentState() {
+    _hasRequestedSuggestion = false;
+    _agentSuggestionText = "";
+    _agentLogs = [];
   }
 }
 

@@ -1,3 +1,8 @@
+import 'dart:developer' as developer;
+
+const List<String> sizeOrder = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+const String _defaultInventoryItemId = 'default-item';
+
 class InventoryCheckResult {
   final bool inStock;
   final String requestedSize;
@@ -23,15 +28,13 @@ class FittingOrchestrationResult {
 }
 
 class InventoryAgent {
-  static const List<String> _sizeOrder = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
-
   final Map<String, Map<String, int>> _mockInventory;
 
   InventoryAgent({Map<String, Map<String, int>>? inventoryData})
     : _mockInventory =
           inventoryData ??
           {
-            'default-item': {'S': 0, 'M': 0, 'L': 4, 'XL': 2},
+            _defaultInventoryItemId: {'S': 0, 'M': 0, 'L': 4, 'XL': 2},
             'fallback-item': {'M': 1, 'L': 0},
           };
 
@@ -41,7 +44,7 @@ class InventoryAgent {
   ) async {
     try {
       final itemInventory =
-          _mockInventory[itemId] ?? _mockInventory['default-item'] ?? {};
+          _mockInventory[itemId] ?? _mockInventory[_defaultInventoryItemId] ?? {};
       final normalizedDesiredSize = desiredSize.toUpperCase();
 
       if ((itemInventory[normalizedDesiredSize] ?? 0) > 0) {
@@ -71,7 +74,12 @@ class InventoryAgent {
         requestedSize: normalizedDesiredSize,
         message: '$normalizedDesiredSizeサイズおよび代替サイズの在庫が現在ありません。',
       );
-    } catch (_) {
+    } catch (e) {
+      developer.log(
+        '[InventoryAgent] checkInventory error',
+        name: 'InventoryAgent',
+        error: e,
+      );
       return InventoryCheckResult(
         inStock: false,
         requestedSize: desiredSize.toUpperCase(),
@@ -84,21 +92,21 @@ class InventoryAgent {
     required String desiredSize,
     required Map<String, int> itemInventory,
   }) {
-    final desiredIndex = _sizeOrder.indexOf(desiredSize);
+    final desiredIndex = sizeOrder.indexOf(desiredSize);
     if (desiredIndex == -1) {
-      for (final size in _sizeOrder) {
+      for (final size in sizeOrder) {
         if ((itemInventory[size] ?? 0) > 0) return size;
       }
       return null;
     }
 
-    for (int i = desiredIndex + 1; i < _sizeOrder.length; i++) {
-      final size = _sizeOrder[i];
+    for (int i = desiredIndex + 1; i < sizeOrder.length; i++) {
+      final size = sizeOrder[i];
       if ((itemInventory[size] ?? 0) > 0) return size;
     }
 
     for (int i = desiredIndex - 1; i >= 0; i--) {
-      final size = _sizeOrder[i];
+      final size = sizeOrder[i];
       if ((itemInventory[size] ?? 0) > 0) return size;
     }
 
@@ -107,8 +115,6 @@ class InventoryAgent {
 }
 
 class FittingAgent {
-  static const List<String> _sizeOrder = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
-
   final InventoryAgent _inventoryAgent;
   final double shoulderTolerance;
 
@@ -161,7 +167,12 @@ class FittingAgent {
       final suggestion = _buildSuggestionText(fitReason, inventory);
 
       return FittingOrchestrationResult(suggestionText: suggestion, logs: logs);
-    } catch (_) {
+    } catch (e) {
+      developer.log(
+        '[FittingAgent] evaluateFitting error',
+        name: 'FittingAgent',
+        error: e,
+      );
       logs.add('[FittingAgent] 予期しないエラーを検知。安全なフォールバックを返却');
       return FittingOrchestrationResult(
         suggestionText: 'サイズ提案の処理で問題が発生しました。しばらくしてから再度お試しください。',
@@ -171,16 +182,16 @@ class FittingAgent {
   }
 
   String _getNextSize(String currentSize, {required bool isTooSmall}) {
-    final index = _sizeOrder.indexOf(currentSize);
+    final index = sizeOrder.indexOf(currentSize);
     if (index == -1) return isTooSmall ? 'L' : 'S';
 
     if (isTooSmall) {
       final next = index + 1;
-      return next < _sizeOrder.length ? _sizeOrder[next] : _sizeOrder[index];
+      return next < sizeOrder.length ? sizeOrder[next] : sizeOrder[index];
     }
 
     final prev = index - 1;
-    return prev >= 0 ? _sizeOrder[prev] : _sizeOrder[index];
+    return prev >= 0 ? sizeOrder[prev] : sizeOrder[index];
   }
 
   String _buildSuggestionText(String fitReason, InventoryCheckResult inventory) {
