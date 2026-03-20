@@ -51,8 +51,8 @@ class _SignInDemoState extends State<SignInDemo> {
         _error = null;
       });
 
-      // キャッシュされているアカウントをクリアする
-      await _googleSignIn.signOut(); // テスト用
+      // // キャッシュされているアカウントをクリアする
+      // await _googleSignIn.signOut(); // テスト用
 
       // googleのアカウント選択画面を表示して、ユーザーに選択してもらう
       final googleUser = await _googleSignIn.signIn();
@@ -86,6 +86,8 @@ class _SignInDemoState extends State<SignInDemo> {
       // 今回が初回ログイン（= baseShoulderWidthPx が登録されていない）かどうか判定
       final bool isFirstLogin =
           data == null || !(data.containsKey('baseShoulderWidthPx'));
+
+      // final bool isFirstLogin = true; // とりあえず常に初回ログイン扱いにする（肩幅の登録は後で実装する予定）
 
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'uid': user.uid,
